@@ -597,6 +597,18 @@ impl TryFrom<&[u8]> for ReturnValue {
         function_call_result_fb.try_into()
     }
 }
+/// A dummy type used for deserializing the buffer for void returns.
+/// This is needed because `try_pop_buffer_into` requires a type that implements `TryFrom<&[u8]>`,
+/// but for void returns, there is no actual data to deserialize into a `ReturnValue`.
+pub struct VoidReturnBuffer;
+
+impl TryFrom<&[u8]> for VoidReturnBuffer {
+    type Error = Error;
+
+    fn try_from(_value: &[u8]) -> Result<Self> {
+        Ok(VoidReturnBuffer)
+    }
+}
 
 impl TryFrom<&ReturnValue> for Vec<u8> {
     type Error = Error;

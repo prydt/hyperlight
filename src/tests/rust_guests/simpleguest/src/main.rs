@@ -514,7 +514,77 @@ fn get_size_prefixed_buffer(function_call: &FunctionCall) -> Result<Vec<u8>> {
         ))
     }
 }
+fn echo_i32(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::Int(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(value))
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_i32".to_string(),
+        ))
+    }
+}
 
+fn echo_u32(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::UInt(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(value))
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_u32".to_string(),
+        ))
+    }
+}
+
+fn echo_i64(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::Long(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(value))
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_i64".to_string(),
+        ))
+    }
+}
+
+fn echo_u64(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::ULong(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(value))
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_u64".to_string(),
+        ))
+    }
+}
+
+fn echo_bool(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::Bool(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(value))
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_bool".to_string(),
+        ))
+    }
+}
+
+fn echo_vec_bytes(function_call: &FunctionCall) -> Result<Vec<u8>> {
+    if let ParameterValue::VecBytes(value) = function_call.parameters.clone().unwrap()[0].clone() {
+        Ok(get_flatbuffer_result(&*value)) // Note: Need to borrow Vec<u8> for get_flatbuffer_result
+    } else {
+        Err(HyperlightGuestError::new(
+            ErrorCode::GuestFunctionParameterTypeMismatch,
+            "Invalid parameters passed to echo_vec_bytes".to_string(),
+        ))
+    }
+}
+
+fn return_void(_function_call: &FunctionCall) -> Result<Vec<u8>> {
+    // Return an empty Vec<u8> to signify a void return.
+    // The host interprets this based on the expected ReturnType::Void.
+    Ok(Vec::new())
+}
 #[expect(
     clippy::empty_loop,
     reason = "This function is used to keep the CPU busy"
@@ -1108,52 +1178,136 @@ pub extern "C" fn hyperlight_main() {
         trigger_exception as usize,
     );
     register_function(trigger_exception_def);
+    let echo_i32_def = GuestFunctionDefinition::new(
+        "EchoI32".to_string(),
+        Vec::from(&[ParameterType::Int]),
+        ReturnType::Int,
+        echo_i32 as usize,
+    );
+    register_function(echo_i32_def);
+
+    let echo_u32_def = GuestFunctionDefinition::new(
+        "EchoU32".to_string(),
+        Vec::from(&[ParameterType::UInt]),
+        ReturnType::UInt,
+        echo_u32 as usize,
+    );
+    register_function(echo_u32_def);
+
+    let echo_i64_def = GuestFunctionDefinition::new(
+        "EchoI64".to_string(),
+        Vec::from(&[ParameterType::Long]),
+        ReturnType::Long,
+        echo_i64 as usize,
+    );
+    register_function(echo_i64_def);
+
+    let echo_u64_def = GuestFunctionDefinition::new(
+        "EchoU64".to_string(),
+        Vec::from(&[ParameterType::ULong]),
+        ReturnType::ULong,
+        echo_u64 as usize,
+    );
+    register_function(echo_u64_def);
+
+    let echo_bool_def = GuestFunctionDefinition::new(
+        "EchoBool".to_string(),
+        Vec::from(&[ParameterType::Bool]),
+        ReturnType::Bool,
+        echo_bool as usize,
+    );
+    register_function(echo_bool_def);
+
+    let echo_vec_bytes_def = GuestFunctionDefinition::new(
+        "EchoVecBytes".to_string(),
+        Vec::from(&[ParameterType::VecBytes]),
+        ReturnType::VecBytes,
+        echo_vec_bytes as usize,
+    );
+    register_function(echo_vec_bytes_def);
+
+    let return_void_def = GuestFunctionDefinition::new(
+        "ReturnVoid".to_string(),
+        Vec::new(),
+        ReturnType::Void,
+        return_void as usize,
+    );
+    register_function(return_void_def);
+
+    let return_void_def = GuestFunctionDefinition::new(
+        "ReturnVoid".to_string(),
+        Vec::new(),
+        ReturnType::Void,
+        return_void as usize,
+    );
+    register_function(return_void_def);
 }
 
 #[no_mangle]
 pub fn guest_dispatch_function(function_call: FunctionCall) -> Result<Vec<u8>> {
-    // This test checks the stack behavior of the input/output buffer
-    // by calling the host before serializing the function call.
-    // If the stack is not working correctly, the input or output buffer will be
-    // overwritten before the function call is serialized, and we will not be able
-    // to verify that the function call name is "ThisIsNotARealFunctionButTheNameIsImportant"
+    // Special case for fuzzing host functions
     if function_call.function_name == "FuzzHostFunc" {
         return fuzz_host_function(function_call);
     }
 
-    let message = "Hi this is a log message that will overwrite the shared buffer if the stack is not working correctly";
-
-    logging::log_message(
-        LogLevel::Information,
-        message,
-        "source",
-        "caller",
-        "file",
-        1,
-    );
-
-    call_host_function(
-        "HostPrint",
-        Some(Vec::from(&[ParameterValue::String(message.to_string())])),
-        ReturnType::Int,
-    )?;
-    let result = get_host_return_value::<i32>()?;
-    let function_name = function_call.function_name.clone();
-    let param_len = function_call.parameters.clone().unwrap_or_default().len();
-    let call_type = function_call.function_call_type().clone();
-
-    if function_name != "ThisIsNotARealFunctionButTheNameIsImportant"
-        || param_len != 0
-        || call_type != FunctionCallType::Guest
-        || result != 100
-    {
-        return Err(HyperlightGuestError::new(
+    // General dispatch based on function name
+    match function_call.function_name.as_str() {
+        "SetStatic" => set_static(&function_call),
+        "PrintOutput" => simple_print_output(&function_call),
+        "PrintUsingPrintf" => simple_print_output(&function_call), // Alias
+        "StackOverflow" => stack_overflow(&function_call),
+        "BufferOverrun" => buffer_overrun(&function_call),
+        "LargeVar" => large_var(&function_call),
+        "SmallVar" => small_var(&function_call),
+        "CallMalloc" => call_malloc(&function_call),
+        "MallocAndFree" => malloc_and_free(&function_call),
+        "PrintTwoArgs" => print_two_args(&function_call),
+        "PrintThreeArgs" => print_three_args(&function_call),
+        "PrintFourArgs" => print_four_args(&function_call),
+        "PrintFiveArgs" => print_five_args(&function_call),
+        "PrintSixArgs" => print_six_args(&function_call),
+        "PrintSevenArgs" => print_seven_args(&function_call),
+        "PrintEightArgs" => print_eight_args(&function_call),
+        "PrintNineArgs" => print_nine_args(&function_call),
+        "PrintTenArgs" => print_ten_args(&function_call),
+        "PrintElevenArgs" => print_eleven_args(&function_call),
+        "SetByteArrayToZero" => set_byte_array_to_zero(&function_call),
+        "Echo" => echo(&function_call),
+        "GetSizePrefixedBuffer" => get_size_prefixed_buffer(&function_call),
+        "Spin" => spin(&function_call),
+        "GuestAbortWithCode" => test_abort(&function_call),
+        "GuestAbortWithMessage" => test_abort_with_code_and_message(&function_call),
+        "guest_panic" => test_guest_panic(&function_call),
+        "TestMalloc" => test_rust_malloc(&function_call),
+        "LogMessage" => log_message(&function_call),
+        "InfiniteRecursion" => infinite_recursion(&function_call),
+        "test_write_raw_ptr" => test_write_raw_ptr(&function_call),
+        "ExecuteOnStack" => execute_on_stack(&function_call),
+        "ExecuteOnHeap" => execute_on_heap(&function_call),
+        "AddToStatic" => add_to_static(&function_call),
+        "GetStatic" => get_static(&function_call),
+        "AddToStaticAndFail" => add_to_static_and_fail(&function_call),
+        "ViolateSeccompFilters" => violate_seccomp_filters(&function_call),
+        "EchoFloat" => echo_float(&function_call),
+        "EchoDouble" => echo_double(&function_call),
+        "Add" => add(&function_call),
+        "TriggerException" => trigger_exception(&function_call),
+        "EchoI32" => echo_i32(&function_call),
+        "EchoU32" => echo_u32(&function_call),
+        "EchoI64" => echo_i64(&function_call),
+        "EchoU64" => echo_u64(&function_call),
+        "EchoBool" => echo_bool(&function_call),
+        "EchoVecBytes" => echo_vec_bytes(&function_call),
+        "ReturnVoid" => {
+             return_void(&function_call)?; // Ensure the function itself doesn't error
+             Ok(get_flatbuffer_result(())) // Explicitly return Flatbuffer for Void
+        }
+        // Add other function names and their corresponding calls here
+        _ => Err(HyperlightGuestError::new(
             ErrorCode::GuestFunctionNotFound,
-            function_name,
-        ));
+            function_call.function_name,
+        )),
     }
-
-    Ok(get_flatbuffer_result(99))
 }
 
 // Interprets the given guest function call as a host function call and dispatches it to the host.

@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+use hyperlight_common::flatbuffer_wrappers::function_types::ReturnType;
+use hyperlight_common::flatbuffer_wrappers::function_types::VoidReturnBuffer;
 use core::mem::size_of;
 use std::cmp::Ordering;
 use std::str::from_utf8;
@@ -634,11 +636,25 @@ impl SandboxMemoryManager<HostSharedMemory> {
 
     /// Reads a function call result from memory
     #[instrument(err(Debug), skip_all, parent = Span::current(), level= "Trace")]
-    pub(crate) fn get_guest_function_call_result(&mut self) -> Result<ReturnValue> {
-        self.shared_mem.try_pop_buffer_into::<ReturnValue>(
-            self.layout.output_data_buffer_offset,
-            self.layout.sandbox_memory_config.get_output_data_size(),
-        )
+    pub(crate) fn get_guest_function_call_result(&mut self, return_type: ReturnType) -> Result<ReturnValue> {
+        // If the return type is Void, there is no Flatbuffer to deserialize.
+        if return_type == ReturnType::Void {
+            // For void returns, the guest writes a minimal buffer (just the stack pointer).
+            // We still need to pop this minimal buffer to update the stack pointer and zero out the memory.
+            // We can use a dummy type like `()` for try_pop_buffer_into as we don't need to deserialize anything.
+            // The actual return value is hardcoded to ReturnValue::Void.
+            self.shared_mem.try_pop_buffer_into::<VoidReturnBuffer>(
+                self.layout.output_data_buffer_offset,
+                self.layout.sandbox_memory_config.get_output_data_size(),
+            )?;
+            Ok(ReturnValue::Void)
+        } else {
+            // For other return types, attempt to deserialize the buffer as a ReturnValue Flatbuffer.
+            self.shared_mem.try_pop_buffer_into::<ReturnValue>(
+                self.layout.output_data_buffer_offset,
+                self.layout.sandbox_memory_config.get_output_data_size(),
+            )
+        }
     }
 
     /// Read guest log data from the `SharedMemory` contained within `self`

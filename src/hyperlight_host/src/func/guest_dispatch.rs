@@ -85,7 +85,7 @@ pub(crate) fn call_function_on_guest<WrapperGetterT: WrapperGetter>(
 
     mem_mgr
         .as_mut()
-        .get_guest_function_call_result()
+        .get_guest_function_call_result(return_type)
         .map_err(|e| {
             if timedout {
                 // if we timed-out, but still got here
